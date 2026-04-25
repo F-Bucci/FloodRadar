@@ -9,6 +9,11 @@ import json
 import base64
 import requests
 from datetime import datetime, timedelta
+import numpy as np
+from skimage import measure
+from shapely.geometry import Polygon, mapping
+from shapely.ops import unary_union
+import openrouteservice
 
 try:
     from flask import Flask, render_template, jsonify, request
