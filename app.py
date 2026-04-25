@@ -30,7 +30,8 @@ app = Flask(__name__)
 #   export SH_CLIENT_SECRET="your-client-secret"
 SH_CLIENT_ID     = "sh-9cd10f25-2f96-4942-a9e8-f2ec71766649"
 SH_CLIENT_SECRET = "S44S5oIcKh89LHaFCsS6N0WPokBfbTud"
-
+ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
+ors_client = openrouteservice.Client(key=ORS_API_KEY)
 TOKEN_URL  = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 
@@ -59,7 +60,40 @@ function setup() {
     mosaicking: "ORBIT"
   };
 }
+def mask_to_geojson(mask, bbox):
+    min_lon, min_lat, max_lon, max_lat = bbox
+    H, W = mask.shape
 
+    def pixel_to_geo(row, col):
+        lon = min_lon + (col / W) * (max_lon - min_lon)
+        lat = max_lat - (row / H) * (max_lat - min_lat)
+        return [lon, lat]
+
+    contours = measure.find_contours(mask.astype(np.uint8), 0.5)
+
+    polygons = []
+    for contour in contours:
+        coords = [pixel_to_geo(r, c) for r, c in contour]
+
+        if len(coords) > 3:
+            poly = Polygon(coords)
+            if poly.is_valid and poly.area > 1e-8:
+                polygons.append(poly)
+
+    if not polygons:
+        return None
+
+    merged = unary_union(polygons).simplify(0.0005)
+    geojson = mapping(merged)
+
+    if geojson["type"] == "Polygon":
+        geojson = {
+            "type": "MultiPolygon",
+            "coordinates": [geojson["coordinates"]]
+        }
+
+    return geojson
+    
 function preProcessScenes(collections) {
   // Keep only the two most recent orbits for before/after comparison
   collections.scenes.orbits = collections.scenes.orbits.slice(-2);
